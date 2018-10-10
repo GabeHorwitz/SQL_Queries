@@ -1,0 +1,50 @@
+with qIn as
+            (
+             select
+                case when ww.employee_id is not null then ww.flow else 1 end flow,
+                'In'::text flow_type,
+                ww.effective_date flow_date,
+                w.hire_date business_date,
+                date_part('month', w.hire_date)::int "month",
+                date_part('year', w.hire_date)::int "year",
+                m.who_is_your_manager,
+                l."key" "location",
+                cc.new_hierarchy,
+                w.*,
+                case when mm.hierarchy_regional_assignment is null then mra.region else mm.hierarchy_regional_assignment end hierarchy_regional_new
+            from workday.workers w
+            left join public.missing_regional_assignments mra on mra.employee_id = w.employee_id
+            left join (select t.employee_id, 1 flow, t.effective_date from workday.transactional t where t.business_process_name = 'Hire') ww on w.employee_id = ww.employee_id
+            --left join (select t.employee_id, count(*) flow from workday.transactional t where t.business_process_name = 'Hire' group by t.employee_id having count(*) > 1) ww on w.employee_id = ww.employee_id
+            left join public.manager m on w.supervisory_organization = m.supervisory_organization
+            left join public.location l on l.location = w.building_location
+            left join public.cost_center cc on cc.cost_center_name = w.cost_center_name
+            left join public.regional_mapping mm on mm.hierarchy_territory_assignment = w.hierarchy_territory_assignment
+            --where worker_type = 'Employee' and (employee_type = 'Regular' or employee_type = 'Fixed Term')
+            ),
+            qOut as
+            (
+            select
+                case when ww.employee_id is not null then ww.flow else -1 end flow,
+                'Out'::text flow_type,
+                ww.effective_date flow_date,
+                w.termination_date business_date,
+                date_part('month', w.termination_date)::int "month",
+                date_part('year', w.termination_date)::int "year",
+                m.who_is_your_manager,
+                l."key" "location",
+                cc.new_hierarchy,
+                w.*,
+                case when mm.hierarchy_regional_assignment is null then mra.region else mm.hierarchy_regional_assignment end hierarchy_regional_new
+            from workday.workers w
+            left join public.missing_regional_assignments mra on mra.employee_id = w.employee_id
+            left join (select t.employee_id, -1 flow, t.effective_date from workday.transactional t where t.business_process_name = 'Termination') ww on w.employee_id = ww.employee_id
+            --left join (select t.employee_id, -count(*) flow from workday.transactional t where t.business_process_name = 'Termination' group by t.employee_id having count(*) > 1) ww on w.employee_id = ww.employee_id
+            left join public.manager m on w.supervisory_organization = m.supervisory_organization
+            left join public.location l on l.location = w.building_location
+            left join public.cost_center cc on cc.cost_center_name = w.cost_center_name
+            left join public.regional_mapping mm on mm.hierarchy_territory_assignment = w.hierarchy_territory_assignment
+            where termination_date is not null -- and worker_type = 'Employee' and (employee_type = 'Regular' or employee_type = 'Fixed Term')
+            )
+            select * from qIn union all
+            select * from qOut
